@@ -27,6 +27,13 @@
 #include "ext/standard/info.h"
 #include "php_eventmysql.h"
 
+#define EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME(link) Z_OBJCE_P(link)->name
+#ifdef ZEND_ENGINE_3
+#define EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME_STR(link) ZSTR_VAL(EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME(link))
+#else
+#define EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME_STR(link) EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME(link)
+#endif
+
 /* If you declare any globals in php_eventmysql.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(eventmysql)
 */
@@ -34,63 +41,62 @@ ZEND_DECLARE_MODULE_GLOBALS(eventmysql)
 /* True global resources - no need for thread safety here */
 static int le_eventmysql;
 
-/* {{{ PHP_INI
+
+/* {{{ Get FD of MySQLi connection
  */
-/* Remove comments and fill if you need to have entries in php.ini
-PHP_INI_BEGIN()
-    STD_PHP_INI_ENTRY("eventmysql.global_value",      "42", PHP_INI_ALL, OnUpdateLong, global_value, zend_eventmysql_globals, eventmysql_globals)
-    STD_PHP_INI_ENTRY("eventmysql.global_string", "foobar", PHP_INI_ALL, OnUpdateString, global_string, zend_eventmysql_globals, eventmysql_globals)
-PHP_INI_END()
-*/
-/* }}} */
-
-/* Remove the following function when you have successfully modified config.m4
-   so that your module can be compiled into PHP, it exists only for testing
-   purposes. */
-
-/* Every user-visible function in PHP should document itself in the source */
-/* {{{ proto string confirm_eventmysql_compiled(string arg)
-   Return a string to confirm that the module is compiled in */
-PHP_FUNCTION(confirm_eventmysql_compiled)
+PHP_FUNCTION(eventmysql_get_conn_fd)
 {
-	char *arg = NULL;
-	size_t arg_len, len;
-	zend_string *strg;
+    zval *link;
+    MY_MYSQL *mysql;
+    php_stream *stream;
+    long *fd;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &arg, &arg_len) == FAILURE) {
-		return;
-	}
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &link) == FAILURE)
+    {
+        return;
+    }
 
-	strg = strpprintf(0, "Congratulations! You have successfully modified ext/%.78s/config.m4. Module %.78s is now compiled into PHP.", "eventmysql", arg);
+    *fd = -1;
 
-	RETURN_STR(strg);
+    if (Z_TYPE_P(link) != IS_OBJECT
+            || strcasecmp(EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME_STR(link), "mysqli") != 0)
+    {
+        RETURN_FALSE;
+    }
+
+#if PHP_MAJOR_VERSION > 5
+    MYSQLI_FETCH_RESOURCE_CONN(mysql, link, MYSQLI_STATUS_VALID);
+    stream = mysql->mysql->data->net->data->m.get_stream(mysql->mysql->data->net TSRMLS_CC);
+#elif PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION > 4
+    MYSQLI_FETCH_RESOURCE_CONN(mysql, &link, MYSQLI_STATUS_VALID);
+    stream = mysql->mysql->data->net->data->m.get_stream(mysql->mysql->data->net TSRMLS_CC);
+#else
+    MYSQLI_FETCH_RESOURCE_CONN(mysql, &link, MYSQLI_STATUS_VALID);
+    stream = mysql->mysql->data->net->stream;
+#endif
+
+    if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void* )fd, 1) != SUCCESS
+            || *fd <= 2)
+    {
+        RETURN_FALSE;
+    }
+
+    if (fd <= 0)
+    {
+        RETURN_FALSE;
+    }
+    else
+    {
+        RETURN_LONG(fd);
+    }
 }
 /* }}} */
-/* The previous line is meant for vim and emacs, so it can correctly fold and
-   unfold functions in source code. See the corresponding marks just before
-   function definition, where the functions purpose is also documented. Please
-   follow this convention for the convenience of others editing your code.
-*/
 
-
-/* {{{ php_eventmysql_init_globals
- */
-/* Uncomment this function if you have INI entries
-static void php_eventmysql_init_globals(zend_eventmysql_globals *eventmysql_globals)
-{
-	eventmysql_globals->global_value = 0;
-	eventmysql_globals->global_string = NULL;
-}
-*/
-/* }}} */
 
 /* {{{ PHP_MINIT_FUNCTION
  */
 PHP_MINIT_FUNCTION(eventmysql)
 {
-	/* If you have INI entries, uncomment these lines
-	REGISTER_INI_ENTRIES();
-	*/
 	return SUCCESS;
 }
 /* }}} */
@@ -99,9 +105,6 @@ PHP_MINIT_FUNCTION(eventmysql)
  */
 PHP_MSHUTDOWN_FUNCTION(eventmysql)
 {
-	/* uncomment this line if you have INI entries
-	UNREGISTER_INI_ENTRIES();
-	*/
 	return SUCCESS;
 }
 /* }}} */
@@ -132,21 +135,21 @@ PHP_RSHUTDOWN_FUNCTION(eventmysql)
 PHP_MINFO_FUNCTION(eventmysql)
 {
 	php_info_print_table_start();
-	php_info_print_table_header(2, "eventmysql support", "enabled");
+	php_info_print_table_header(2, "EventMySQL support", "enabled");
 	php_info_print_table_end();
-
-	/* Remove comments if you have entries in php.ini
-	DISPLAY_INI_ENTRIES();
-	*/
 }
 /* }}} */
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_eventmysql_get_conn_fd, 0, 0, 1)
+    ZEND_ARG_INFO(0, link)
+ZEND_END_ARG_INFO()
 
 /* {{{ eventmysql_functions[]
  *
  * Every user visible function must have an entry in eventmysql_functions[].
  */
 const zend_function_entry eventmysql_functions[] = {
-	PHP_FE(confirm_eventmysql_compiled,	NULL)		/* For testing, remove later. */
+    PHP_FE(eventmysql_get_conn_fd, arginfo_eventmysql_get_conn_fd)
 	PHP_FE_END	/* Must be the last line in eventmysql_functions[] */
 };
 /* }}} */
