@@ -26,6 +26,8 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_eventmysql.h"
+#include "php_network.h"
+#include "ext/mysqli/php_mysqli_structs.h"
 
 #define EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME(link) Z_OBJCE_P(link)->name
 #ifdef ZEND_ENGINE_3
@@ -49,18 +51,15 @@ PHP_FUNCTION(eventmysql_get_conn_fd)
     zval *link;
     MY_MYSQL *mysql;
     php_stream *stream;
-    long *fd;
+    php_socket_t fd = -1;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &link) == FAILURE)
-    {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &link) == FAILURE) {
         return;
     }
 
-    *fd = -1;
-
     if (Z_TYPE_P(link) != IS_OBJECT
-            || strcasecmp(EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME_STR(link), "mysqli") != 0)
-    {
+            || strcasecmp(EVENTMYSQL_FETCH_MYSQLI_OBJ_NAME_STR(link), "mysqli") != 0) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Illegal MySQLi object was found");
         RETURN_FALSE;
     }
 
@@ -75,19 +74,17 @@ PHP_FUNCTION(eventmysql_get_conn_fd)
     stream = mysql->mysql->data->net->stream;
 #endif
 
-    if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void* )fd, 1) != SUCCESS
-            || *fd <= 2)
-    {
+    if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void* )&fd, 1) != SUCCESS
+            || fd <= 2) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Fail to convert stream to FD");
         RETURN_FALSE;
     }
 
-    if (fd <= 0)
-    {
+    if (fd <= 0) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Illegal FD was found");
         RETURN_FALSE;
-    }
-    else
-    {
-        RETURN_LONG(fd);
+    } else {
+        RETURN_LONG((zend_long)fd);
     }
 }
 /* }}} */
