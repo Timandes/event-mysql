@@ -87,7 +87,11 @@ PHP_FUNCTION(eventmysql_get_conn_fd)
         php_error_docref(NULL TSRMLS_CC, E_WARNING, "Illegal FD was found");
         RETURN_FALSE;
     } else {
+#ifdef ZEND_ENGINE_3
         RETURN_LONG((zend_long)fd);
+#else
+        RETURN_LONG((long)fd);
+#endif
     }
 }
 /* }}} */
