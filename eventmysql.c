@@ -63,9 +63,12 @@ PHP_FUNCTION(eventmysql_get_conn_fd)
         RETURN_FALSE;
     }
 
-#if PHP_MAJOR_VERSION > 5
+#if PHP_MAJOR_VERSION == 7 && PHP_MINOR_VERSION == 0
     MYSQLI_FETCH_RESOURCE_CONN(mysql, link, MYSQLI_STATUS_VALID);
-    stream = mysql->mysql->data->net->data->m.get_stream(mysql->mysql->data->net TSRMLS_CC);
+    stream = mysql->mysql->data->net->data->m.get_stream(mysql->mysql->data->net);
+#elif PHP_MAJOR_VERSION >= 7
+    MYSQLI_FETCH_RESOURCE_CONN(mysql, link, MYSQLI_STATUS_VALID);
+    stream = mysql->mysql->data->vio->data->m.get_stream(mysql->mysql->data->vio);
 #elif PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION > 4
     MYSQLI_FETCH_RESOURCE_CONN(mysql, &link, MYSQLI_STATUS_VALID);
     stream = mysql->mysql->data->net->data->m.get_stream(mysql->mysql->data->net TSRMLS_CC);
